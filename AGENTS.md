@@ -37,7 +37,8 @@ JDK 17–21 is required (Gradle 8.11 does not run on newer Java). Kotlin package
 
 - Readable, plain English in user-facing text and docs; no jargon where a plain word works.
 - Keep the README short; lasting detail goes into `docs/`. Update `docs/CHANGELOG.md`,
-  `docs/FEATURES.md` and, for structure changes, `docs/ARCHITECTURE.md` with the change.
+  `docs/FEATURES.md`, `docs/USER_GUIDE.md` (for anything users see or do differently) and, for
+  structure changes, `docs/ARCHITECTURE.md` with the change.
 - Releases: raise `versionCode` and `versionName` in `app/build.gradle.kts`, update the changelog,
   tag `vX.Y.Z` (see DEVELOPMENT.md).
 - Code ported from other projects keeps its credits: LedFx (GPL-3.0), WLED (EUPL-1.2, effect authors

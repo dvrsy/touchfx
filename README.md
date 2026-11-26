@@ -22,7 +22,8 @@ LED matrices. No PC needed.
 - **Backup and restore** of everything as a JSON file.
 - A dark, mixer-style interface.
 
-The full list is in [docs/FEATURES.md](docs/FEATURES.md).
+The full list is in [docs/FEATURES.md](docs/FEATURES.md); how to use it is in the
+[user guide](docs/USER_GUIDE.md).
 
 ## Install
 
@@ -41,6 +42,7 @@ source when Android asks).
 
 | | |
 |---|---|
+| [User guide](docs/USER_GUIDE.md) | Setting up lights, matrices, groups, scenes, XY pad |
 | [Features](docs/FEATURES.md) | Everything TouchFx can do, all effects |
 | [Architecture](docs/ARCHITECTURE.md) | How it works, data model, code map |
 | [Development](docs/DEVELOPMENT.md) | Building, testing, releasing, signing, tools |
