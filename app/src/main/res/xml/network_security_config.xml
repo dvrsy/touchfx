@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WLED controllers on the local network only speak plain HTTP (JSON API and their web
+     page, shown inside the app), so cleartext is allowed. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

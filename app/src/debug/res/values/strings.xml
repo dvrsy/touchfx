@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug builds show a different launcher name so they can be told apart from release. -->
+    <string name="app_name">TouchFx (debug)</string>
+</resources>
