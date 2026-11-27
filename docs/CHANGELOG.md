@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed:** scenes stopped working after groups were made or their segments changed: a newer
+  group stayed on and covered the scene's lights. Playing a scene now switches off lights that
+  share LEDs with its lights, as turning a light on by hand does; a held scene brings them back
+  when released, and a scene card is only highlighted when nothing covers it
+  ([#1](https://github.com/dvrsy/touchfx/issues/1)).
+
 ## TouchFx 0.1.0 (2026-11-26)
 
 First public version, an early preview.

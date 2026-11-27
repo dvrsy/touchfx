@@ -88,7 +88,9 @@ These effects are made for groups and for combining effects:
 A scene saves the look of several lights and brings it back with one tap.
 
 1. Set up your lights, open the **Scenes** tab and tap **Save scene**.
-2. Choose which lights belong to the scene. Lights left out aren't changed when you play it.
+2. Choose which lights belong to the scene. Lights left out aren't changed when you play it,
+   except that lights sharing LEDs with the scene's lights are switched off, just as when you turn
+   a light on by hand. So a group you make later doesn't cover the scene's lights.
 3. Switch on **Hold to play** for a scene that only runs while you press it; letting go brings back
    the previous look. Good for strobes.
 

@@ -96,5 +96,67 @@ class SceneLogicTest {
         assertTrue(SceneLogic.matches(loaded, devices))
     }
 
+    /** A group over the given segments. */
+    private fun group(id: String, vararg segments: Segment, enabled: Boolean = true, settings: EffectSettings = EffectSettings()) =
+        VirtualConfig(id = id, name = id, segments = segments.toList(), enabled = enabled, settings = settings)
+
+    @Test
+    fun groupMadeAfterTheSceneIsSwitchedOffWhereItConflicts() {
+        // Scene saved for devices 1 and 2; later a group over part of device 1 is made and turned on,
+        // which switched device 1 off (issue #1).
+        val scene = SceneLogic.capture("s", "Party", listOf(device("1", partyLook), device("2", partyLook)), setOf("1", "2"))
+        val now = listOf(device("1", enabled = false), device("2"), device("3"), group("g", Segment("1", 0, 9)))
+        val after = SceneLogic.apply(scene, now).associateBy { it.id }
+        assertTrue(after["1"]!!.enabled)
+        assertTrue(after["2"]!!.enabled)
+        assertFalse("the newer group would draw over device 1", after["g"]!!.enabled)
+        assertTrue("lights not in the scene and not in the way stay on", after["3"]!!.enabled)
+        assertTrue(SceneLogic.matches(scene, SceneLogic.apply(scene, now)))
+    }
+
+    @Test
+    fun sceneWithAGroupSwitchesOffItsDevicesAndOverlappingGroups() {
+        val g = group("g", Segment("1", 0, 9), Segment("2", 0, 9), settings = partyLook)
+        val scene = SceneLogic.capture("s", "Group", listOf(g), setOf("g"))
+        // A device light and an overlapping group were turned on since.
+        val now = listOf(device("1"), device("2", enabled = false), device("3"), g.copy(enabled = false), group("h", Segment("2", 5, 20)))
+        val after = SceneLogic.apply(scene, now).associateBy { it.id }
+        assertTrue(after["g"]!!.enabled)
+        assertFalse(after["1"]!!.enabled)
+        assertFalse(after["h"]!!.enabled)
+        assertTrue(after["3"]!!.enabled)
+    }
+
+    @Test
+    fun whenTwoLightsOfTheSceneNowConflictTheLaterOneWins() {
+        // Saved while the group covered only device 2; its segments were changed to include device 1.
+        val scene = SceneLogic.capture(
+            "s", "Both", listOf(device("1", partyLook), group("g", Segment("2", 0, 9), settings = partyLook)), setOf("1", "g"),
+        )
+        val now = listOf(device("1"), group("g", Segment("1", 0, 9), Segment("2", 0, 9)))
+        val after = SceneLogic.apply(scene, now)
+        assertFalse(after[0].enabled)
+        assertTrue(after[1].enabled)
+        assertTrue(SceneLogic.matches(scene, after))
+    }
+
+    @Test
+    fun sceneIsNotHighlightedWhileANewerGroupCoversIt() {
+        val scene = SceneLogic.capture("s", "Party", listOf(device("1", partyLook)), setOf("1"))
+        val covered = listOf(device("1", partyLook), group("g", Segment("1", 0, 9)))
+        assertFalse(SceneLogic.matches(scene, covered))
+    }
+
+    @Test
+    fun releasingAHeldSceneBringsBackLightsItSwitchedOff() {
+        val scene = SceneLogic.capture("s", "Strobe", listOf(device("1", partyLook)), setOf("1"))
+        val before = listOf(device("1", enabled = false), group("g", Segment("1", 0, 9)), device("2"))
+        val snap = SceneLogic.snapshot(scene, before)
+        assertEquals(setOf("1", "g"), snap.keys)
+        val held = SceneLogic.apply(scene, before)
+        assertFalse(held[1].enabled)
+        assertEquals(before, SceneLogic.restore(snap, held))
+    }
+
     private fun entry(action: SceneAction) = SceneEntry(action)
 }

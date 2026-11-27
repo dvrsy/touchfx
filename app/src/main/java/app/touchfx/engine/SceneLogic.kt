@@ -35,37 +35,53 @@ object SceneLogic {
         return Scene(id, name, entries)
     }
 
-    /** Returns [lights] with [scene] applied. Entries for lights that no longer exist are skipped. */
-    fun apply(scene: Scene, lights: List<VirtualConfig>): List<VirtualConfig> = lights.map { d ->
-        val e = scene.entries[d.id] ?: return@map d
-        when (e.action) {
-            SceneAction.IGNORE -> d
-            SceneAction.STOP -> d.copy(enabled = false)
-            SceneAction.ACTIVATE -> {
-                val s = d.settings
-                val effect = e.effectId ?: s.effectId
-                d.copy(
-                    enabled = true,
-                    settings = s.copy(
-                        effectId = effect,
-                        paletteId = e.paletteId ?: s.paletteId,
-                        customGradient = e.customGradient,
-                        brightness = e.brightness ?: s.brightness,
-                        // Replace only this effect's settings; other effects keep theirs.
-                        configs = if (e.config != null) s.configs + (effect to e.config) else s.configs,
-                    ),
-                )
+    /**
+     * Returns [lights] with [scene] applied. Entries for lights that no longer exist are skipped.
+     *
+     * Lights the scene turns on switch off whatever conflicts with them, as turning a light on by
+     * hand does ([VirtualLogic.enableExclusive]). That includes lights the scene doesn't know,
+     * such as groups made after it was saved, which would otherwise draw over its lights. If two
+     * of the scene's own lights now conflict (e.g. a group's segments were changed), they are
+     * turned on in render order, so the later one (usually the group) wins.
+     */
+    fun apply(scene: Scene, lights: List<VirtualConfig>): List<VirtualConfig> {
+        val looked = lights.map { d ->
+            val e = scene.entries[d.id] ?: return@map d
+            when (e.action) {
+                SceneAction.IGNORE -> d
+                SceneAction.STOP -> d.copy(enabled = false)
+                SceneAction.ACTIVATE -> {
+                    val s = d.settings
+                    val effect = e.effectId ?: s.effectId
+                    d.copy(
+                        enabled = true,
+                        settings = s.copy(
+                            effectId = effect,
+                            paletteId = e.paletteId ?: s.paletteId,
+                            customGradient = e.customGradient,
+                            brightness = e.brightness ?: s.brightness,
+                            // Replace only this effect's settings; other effects keep theirs.
+                            configs = if (e.config != null) s.configs + (effect to e.config) else s.configs,
+                        ),
+                    )
+                }
             }
         }
+        return lights.filter { scene.entries[it.id]?.action == SceneAction.ACTIVATE }
+            .fold(looked) { acc, v -> VirtualLogic.enableExclusive(acc, v.id) }
     }
 
     /**
      * The lights [scene] would change, as they are now, so they can be put back after a held
-     * scene is released. IGNORE entries and missing lights are left out.
+     * scene is released: its own lights (IGNORE entries left out) and the lights it switches off
+     * because they conflict with them. Missing lights are left out.
      */
-    fun snapshot(scene: Scene, lights: List<VirtualConfig>): Map<String, VirtualConfig> =
-        lights.filter { v -> scene.entries[v.id]?.let { it.action != SceneAction.IGNORE } == true }
-            .associateBy { it.id }
+    fun snapshot(scene: Scene, lights: List<VirtualConfig>): Map<String, VirtualConfig> {
+        val after = apply(scene, lights)
+        return lights.filterIndexed { i, v ->
+            scene.entries[v.id]?.let { it.action != SceneAction.IGNORE } == true || after[i].enabled != v.enabled
+        }.associateBy { it.id }
+    }
 
     /**
      * Puts back the on/off state and look saved by [snapshot]. Anything else changed meanwhile
@@ -74,17 +90,22 @@ object SceneLogic {
     fun restore(snapshot: Map<String, VirtualConfig>, lights: List<VirtualConfig>): List<VirtualConfig> =
         lights.map { v -> snapshot[v.id]?.let { old -> v.copy(enabled = old.enabled, settings = old.settings) } ?: v }
 
-    /** True if the lights currently look the way [scene] would set them (to highlight it). */
+    /**
+     * True if the lights currently look the way [scene] would set them (to highlight it). Also
+     * false while a light that the scene would switch off is on, e.g. a newer group covering it.
+     */
     fun matches(scene: Scene, lights: List<VirtualConfig>): Boolean {
+        val after = apply(scene, lights)
         var checked = 0
-        for (d in lights) {
+        for ((i, d) in lights.withIndex()) {
+            if (d.enabled != after[i].enabled) return false
             val e = scene.entries[d.id] ?: continue
             when (e.action) {
                 SceneAction.IGNORE -> continue
-                SceneAction.STOP -> if (d.enabled) return false
-                SceneAction.ACTIVATE -> {
+                SceneAction.STOP -> {}
+                SceneAction.ACTIVATE -> if (d.enabled) {
+                    // Switched off by a later light of the same scene: nothing more to compare.
                     val s = d.settings
-                    if (!d.enabled) return false
                     if (e.effectId != null && e.effectId != s.effectId) return false
                     if (e.paletteId != null && e.paletteId != s.paletteId) return false
                     if (e.customGradient != s.customGradient) return false

@@ -42,7 +42,8 @@ source; 10 effects come from WLED; the rest are TouchFx's own.
 
 ## Scenes and live control
 
-- **Scenes** recall the look of several lights in one tap; lights left out aren't changed.
+- **Scenes** recall the look of several lights in one tap; lights left out aren't changed, unless
+  they share LEDs with the scene's lights (then they are switched off, e.g. groups made later).
 - **Hold to play:** a scene that runs only while pressed, then the previous look returns (strobes).
 - **Playlists:** scenes played in order or at random, each for its own time; a hold-to-play scene
   pauses the playlist, which then carries on.
