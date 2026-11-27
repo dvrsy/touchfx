@@ -14,8 +14,8 @@ android {
         applicationId = "app.touchfx"
         minSdk = 29          // Android 10: needed to capture music played on the phone
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     // Release signing reads keystore.properties (not committed):

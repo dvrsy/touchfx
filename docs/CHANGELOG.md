@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## TouchFx 0.2.0 (2026-11-27)
 
 - **Fixed:** scenes stopped working after groups were made or their segments changed: a newer
   group stayed on and covered the scene's lights. Playing a scene now switches off lights that
