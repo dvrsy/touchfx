@@ -6,7 +6,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
-import kotlin.random.Random
 
 // Ports of LedFx's "Classic" and "BPM" effects.
 
@@ -25,7 +24,7 @@ internal class Energy : Effect() {
         val colors = intArrayOf(p.color("color_lows"), p.color("color_mids"), p.color("color_high"))
         if (p.b("color_cycler")) {
             if (ctx.audio.beat) {
-                cycled[cycler] = ctx.gradWrap(Random.nextFloat())
+                cycled[cycler] = ctx.gradWrap(FxRandom.source.nextFloat())
                 cycler = (cycler + 1) % 3
             }
             for (k in 0..2) if (cycled[k] >= 0) colors[k] = cycled[k]
@@ -151,7 +150,7 @@ internal class Power : Effect() {
         if (y.size != n) { sparks = FloatPixels(n); bass = FloatPixels(n); y = FloatArray(n) }
         val p = ctx.p
         sparks.scale(p.f("sparks_decay_rate"))
-        if (ctx.audio.onset) repeat(max(1, n / 20)) { sparks.set(Random.nextInt(n), p.color("sparks_color")) }
+        if (ctx.audio.onset) repeat(max(1, n / 20)) { sparks.set(FxRandom.source.nextInt(n), p.color("sparks_color")) }
         bass.scale(p.f("bass_decay_rate"))
         val b = bassFilter.update(ctx.audio.lowsPower(false))
         bass.fill(0, (b * n).toInt(), ctx.grad(b))
@@ -220,7 +219,7 @@ internal class Rain : Effect() {
             val color = p.color("${keys[k]}_color")
             if (inten[k] - filtered[k].value > p.f("${keys[k]}_sensitivity")) {
                 if (p.s("pulse_strip") == names[k]) pulse.fill(0, n, color)
-                else if (drops.size < 64) drops += Drop(Random.nextInt(n), color)
+                else if (drops.size < 64) drops += Drop(FxRandom.source.nextInt(n), color)
             }
             filtered[k].update(inten[k])
         }
@@ -273,7 +272,7 @@ internal class RealStrobe : Effect() {
         }
         if (ctx.audio.onset) {
             val w = min(p.i("strobe_width"), n)
-            val pos = if (n - w <= 0) 0 else Random.nextInt(n - w)
+            val pos = if (n - w <= 0) 0 else FxRandom.source.nextInt(n - w)
             strobe.fill(pos, pos + w, p.color("strobe_color"))
         }
         for (i in 0 until n) out[i] = Rgb.of(
@@ -423,10 +422,10 @@ internal class Spotlight : Effect() {
         while (spawnAcc >= 1f && spots.size < cap && spawned < 6 && now - lastSpawn >= 0.02) {
             spawnAcc -= 1f; spawned++; lastSpawn = now
             val (inner, outer) = if (p.b("use_gradient")) {
-                val c = ctx.gradWrap(phase + (Random.nextFloat() - 0.5f) * p.f("spot_color_span"))
+                val c = ctx.gradWrap(phase + (FxRandom.source.nextFloat() - 0.5f) * p.f("spot_color_span"))
                 Rgb.lerp(c, 0xFFFFFF, 0.35f) to c
             } else p.color("center_color") to p.color("edge_color")
-            spots += Spot(Random.nextInt(n), now, inner, outer)
+            spots += Spot(FxRandom.source.nextInt(n), now, inner, outer)
         }
         spawnAcc = min(spawnAcc, 3f)
 

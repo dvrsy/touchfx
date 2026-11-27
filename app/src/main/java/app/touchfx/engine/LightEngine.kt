@@ -483,8 +483,8 @@ object LightEngine {
         var wired = IntArray(0)
         var r = FloatArray(0); var g = FloatArray(0); var b = FloatArray(0); var tmp = FloatArray(0)
         var gradientOffset = 0f
-        /** Seconds this light's clock is ahead of (or behind) the engine's, from Overall speed. */
-        var timeOffset = 0.0
+        /** This light's own clock, for the pad's Overall speed. */
+        val clock = EffectClock()
         /** Segment of each effect pixel, and the layout it was computed for. */
         var segmentOf = IntArray(0)
         var segmentKey: Any? = null
@@ -599,26 +599,25 @@ object LightEngine {
 
     private fun renderVirtual(v: VirtualConfig, rt: VirtualRuntime, ctx: RenderContext, master: Float) {
         val s = v.settings
+        val frameTime = ctx.time // the engine's clock, before Overall speed shifts this light's
         val info = Effects.info(s.effectId)
         if (rt.effectId != info.id || rt.effect == null) {
             rt.effectId = info.id
             rt.effect = info.create()
             rt.values = ParamValues(info.params)
             rt.gradientOffset = 0f
+            rt.clock.reset()
         }
         val pad = _pad.value?.takeIf { it.appliesTo(v.id) }
         // Colours: a different palette, and the effect's own colours from it.
-        val padPalette = pad?.let { XyPad.pickPalette(it, Palettes.all, Palettes.all.indexOfFirst { p -> p.id == s.paletteId }) }
+        val padPalette = pad?.let { XyPad.pickPalette(it, s.paletteId) }
         var config = s.config(info.id)
         if (pad != null) config = XyPad.applyToConfig(info, config, pad)
         if (padPalette != null) config = XyPad.applyColours(info, config) { t -> padPalette.clamped(t) }
         rt.values.values = config
-        // Overall speed: this light's clock runs faster or slower; the offset stays when released,
-        // so animations carry on without a jump (and lights shifted alike stay in step).
+        // Overall speed: applied when rendering, in the way that suits the effect (EffectClock).
+        // A clock that ran ahead stays ahead when released, so animations carry on without a jump.
         val timeScale = if (pad != null) XyPad.timeScale(pad) else 1f
-        if (timeScale != 1f) rt.timeOffset += (timeScale - 1f) * ctx.dt
-        ctx.time += rt.timeOffset
-        ctx.dt *= timeScale
         val p = rt.values
         ctx.rows = v.rows
         ctx.matrixRotate = v.rotate
@@ -655,7 +654,7 @@ object LightEngine {
         ctx.p = p
         ctx.palette = padPalette ?: Palettes.resolve(s.paletteId, s.customGradient)
         try {
-            rt.effect!!.render(ctx, rt.work)
+            rt.clock.render(rt.effect!!, XyPad.timing(info.id), timeScale, ctx, rt.work)
         } catch (e: Exception) {
             Log.w(TAG, "Effect ${info.id} failed", e)
             rt.work.fill(0)
@@ -672,17 +671,20 @@ object LightEngine {
             for (i in 0 until renderN) rt.work[i] = Rgb.of(rt.r[i].toInt(), rt.g[i].toInt(), rt.b[i].toInt())
         }
 
-        val bright = (s.brightness * master).coerceIn(0f, 1f)
+        // Strobe: between flashes the light is dark (the effect keeps running underneath).
+        val strobeOn = pad == null || XyPad.strobeOpen(pad, frameTime, ctx.audio.beatPhase)
+        val bright = if (strobeOn) (s.brightness * master).coerceIn(0f, 1f) else 0f
         val hue = if (pad != null) XyPad.hueShift(pad) else 0f
         val padBright = if (pad != null) XyPad.brightness(pad) else 1f
-        val recolor = hue != 0f || padBright != 1f
+        val sat = if (pad != null) XyPad.saturation(pad) else 0f
+        val recolor = hue != 0f || padBright != 1f || sat != 0f
         val grouped = rt.grouped
         for (i in 0 until n) {
             // Mirror: the effect's first pixel sits in the middle, spreading to both ends.
             val src = if (mirror) (abs(2 * i - (n - 1)) / 2).coerceAtMost(renderN - 1) else i
             val dst = if (flip) n - 1 - i else i
             val c = rt.work[src]
-            grouped[dst] = Rgb.scale(if (recolor) XyPad.recolor(c, hue, padBright) else c, bright)
+            grouped[dst] = Rgb.scale(if (recolor) XyPad.recolor(c, hue, padBright, sat) else c, bright)
         }
         PixelMapper.expandGrouping(grouped, v.grouping, rt.out)
         if (serpentine) PixelMapper.wire(rt.out, v.rows, true, rt.wired)

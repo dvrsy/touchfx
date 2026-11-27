@@ -13,7 +13,6 @@ import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
-import kotlin.random.Random
 
 // ====================================================================== WLED / FastLED maths
 
@@ -66,7 +65,7 @@ internal object WledMath {
     }
 
     /** FastLED random8(lo, hi): lo until hi (hi exclusive). */
-    fun random8(lo: Int, hi: Int): Int = if (hi <= lo) lo else lo + Random.nextInt(hi - lo)
+    fun random8(lo: Int, hi: Int): Int = if (hi <= lo) lo else lo + FxRandom.source.nextInt(hi - lo)
 
     // ---- WLED's Perlin noise (util.cpp), 3D, 16-bit result. Coordinates are uint32 bit patterns.
     private fun grad(h: Int) = (h and 0x03) - 2
@@ -328,8 +327,8 @@ internal class WledLightning : WledEffect() {
     private var stepMs = 0L
     override fun frame() {
         if (len <= 1) { fill(0); return }
-        val start = Random.nextInt(len)
-        val length = 1 + Random.nextInt(len - start)
+        val start = FxRandom.source.nextInt(len)
+        val length = 1 + FxRandom.source.nextInt(len - start)
         var bri = 255 / WledMath.random8(1, 3)
         if (flashes == 0) { // leader
             flashes = WledMath.random8(4, 4 + intensity / 20) * 2
@@ -344,7 +343,7 @@ internal class WledLightning : WledEffect() {
         } else if (now - stepMs > delayMs) {
             flashes--
             if (flashes < 2) flashes = 0
-            delayMs = 50L + Random.nextInt(100)
+            delayMs = 50L + FxRandom.source.nextInt(100)
             if (flashes == 2) delayMs = WledMath.random8(0, 255 - speed).toLong() * 100 // between strikes
             stepMs = now
         }
@@ -385,7 +384,7 @@ internal class WledPuddlepeak : WledEffect() {
     override fun frame() {
         if (len <= 1) return
         fadeOut(224 + speed * 30 / 255)
-        val pos = Random.nextInt(len)
+        val pos = FxRandom.source.nextInt(len)
         // WLED's peak detector has a minimum volume; here a kick above that volume.
         if (!samplePeak || volumeSmth < custom2 / 2f) return
         var size = (volumeSmth * intensity / 256f / 4f).toInt() + 1
@@ -411,7 +410,7 @@ internal class WledBlobs : WledEffect() {
             sy[i] = WledMath.random8(3, h) / (256f - speed)
             x[i] = WledMath.random8(0, w - 1).toFloat()
             y[i] = WledMath.random8(0, h - 1).toFloat()
-            color[i] = Random.nextInt(256)
+            color[i] = FxRandom.source.nextInt(256)
             grow[i] = r[i] < 1f
             if (sx[i] == 0f) sx[i] = 1f
             if (sy[i] == 0f) sy[i] = 1f
@@ -489,7 +488,7 @@ internal class WledSoap : WledEffect() {
 
     override fun reset() {
         noise = IntArray(len); pixels = IntArray(len)
-        for (i in 0 until 3) coord[i] = Random.nextInt()
+        for (i in 0 until 3) coord[i] = FxRandom.source.nextInt()
     }
 
     override fun frame() {

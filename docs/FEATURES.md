@@ -48,10 +48,12 @@ source; 10 effects come from WLED; the rest are TouchFx's own.
 - **Playlists:** scenes played in order or at random, each for its own time; a hold-to-play scene
   pauses the playlist, which then carries on.
 - **XY pad:** drag to change the running effects live, for all lights (Scenes or Lights tab) or one
-  light (its screen). Targets: Speed, Size or Intensity (each effect's own setting), Colours (steps
-  through the palettes, also for effects with their own colours), Overall speed (time runs 0.25× to
-  4× for every effect; music-driven steps stay on the beat), Hue, Palette shift, Brightness. The
-  centre is the saved value; nothing is saved.
+  light (its screen). Targets: Speed, Size or Intensity (each effect's own setting), Colours (glides
+  through the palettes sorted by colour, also for effects with their own colours), Overall speed
+  (0.25× to 4×; beat effects switch to ¼, ½, 2× or 4× time), Hue, Palette shift, Brightness,
+  Saturation (grey to full colour), Strobe (steady rate, or 1–8 flashes per beat). The
+  menus only offer what works on the lights that are on. The centre is the saved value, with finer
+  control near it; nothing is saved.
 - **Filters** on the Lights tab (lights / groups) and Scenes tab (normal / hold / playlists).
 
 ## Audio

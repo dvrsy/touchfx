@@ -10,6 +10,7 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.random.Random
 
 // ------------------------------------------------------------------ settings schema
 
@@ -102,6 +103,14 @@ fun colorToHex(c: Int) = "#%06X".format(c and 0xFFFFFF)
 // ------------------------------------------------------------------ render context
 
 /** Everything an effect needs for one frame. */
+/**
+ * Random numbers for effects. Tests put a seeded generator here so that renders repeat exactly
+ * and effects can be compared with and without a change.
+ */
+object FxRandom {
+    @Volatile var source: Random = Random.Default
+}
+
 class RenderContext {
     var audio: AudioFrame = AudioFrame.EMPTY
     /** Seconds since the engine started. */

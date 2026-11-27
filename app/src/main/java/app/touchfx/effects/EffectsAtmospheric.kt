@@ -6,7 +6,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
-import kotlin.random.Random
 
 /**
  * LedFx's HSVEffect: subclasses fill hue / saturation / value per LED. Hue picks a colour from
@@ -85,7 +84,7 @@ internal class Fire : HsvEffect() {
         val p = ctx.p
         val count = p.i("intensity")
         if (sparks.size != count) {
-            sparks = FloatArray(count); sparkX = FloatArray(count) { Random.nextFloat() * 5 }
+            sparks = FloatArray(count); sparkX = FloatArray(count) { FxRandom.source.nextFloat() * 5 }
         }
         val lp = lows.update(ctx.audio.lowsPower(false))
         val cooling = 0.75f + lp * 0.25f
@@ -98,10 +97,10 @@ internal class Fire : HsvEffect() {
         }
         val fadeChance = p.f("fade_chance") / 10f
         for (k in 0 until count) {
-            if (sparks[k] <= 0f) { sparks[k] = 0.5f + Random.nextFloat() * 0.5f; sparkX[k] = Random.nextFloat() * 5 }
+            if (sparks[k] <= 0f) { sparks[k] = 0.5f + FxRandom.source.nextFloat() * 0.5f; sparkX[k] = FxRandom.source.nextFloat() * 5 }
             val step = sparks[k] * sparks[k] * deltaScaled * (n / 100f)
             sparkX[k] += step
-            if (sparkX[k] >= n || Random.nextFloat() < fadeChance) { sparks[k] = 0f; sparkX[k] = 0f; continue }
+            if (sparkX[k] >= n || FxRandom.source.nextFloat() < fadeChance) { sparks[k] = 0f; sparkX[k] = 0f; continue }
             val from = (sparkX[k] - step).toInt()
             val to = sparkX[k].toInt()
             val add = (1 - sparks[k] * 0.4f).coerceIn(0f, 1f) * 0.5f
@@ -283,7 +282,7 @@ internal class MeltAndSparkle : HsvEffect() {
         val speed = p.f("speed"); val react = p.f("reactivity")
         val lp = lows.update(a.lowsPower(false))
         val cutoff = p.f("strobe_threshold") / 10f
-        if (lp > cutoff && Random.nextInt(200) == 0) direction *= -1
+        if (lp > cutoff && FxRandom.source.nextInt(200) == 0) direction *= -1
         val mp = mids.update(a.midsPower())
         val highs = a.thirdsMax()[2].let { min(1f, it * it) }
         val now = ctx.time
@@ -309,7 +308,7 @@ internal class MeltAndSparkle : HsvEffect() {
         }
         if (fire && n > 2) {
             val w = (p.f("strobe_width").pow(3) * n).toInt().coerceIn(1, n - 1)
-            val pos = Random.nextInt(n - w)
+            val pos = FxRandom.source.nextInt(n - w)
             for (i in pos until pos + w) strobe[i] = 1f
         }
         for (i in 0 until n) {

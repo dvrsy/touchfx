@@ -113,10 +113,26 @@ The XY pad changes the running effects live by dragging a finger. Open it from:
 - the **Lights** tab: **XY pad** next to the filter (all lights),
 - a light's screen: the four-arrow button at the top (only that light).
 
-Choose what each axis changes under **X ↔** and **Y ↕**: Speed, Size, Intensity, Colours, Overall
-speed, Hue, Palette shift or Brightness. The centre leaves everything as saved; towards the edges a
-setting goes to its minimum or maximum. Lifting your finger returns to normal unless **Hold
-position** is on. Nothing is saved.
+Choose what each axis changes under **X ↔** and **Y ↕**:
+
+- **Speed, Size, Intensity:** each effect's own setting, for effects that have one.
+- **Colours:** glides through the palettes, sorted by colour, blending from one into the next.
+- **Overall speed:** runs effects 0.25× to 4×. Effects that follow the beat (such as Bar) switch to
+  quarter, half, double or quadruple time, so they stay on the beat. Effects that only follow the
+  sound (meters, bands, spectrum) can't be sped up.
+- **Hue** and **Brightness:** work on every light.
+- **Saturation:** left takes the colour out (grey at the edge), right makes colours stronger.
+- **Strobe:** flashes the lights. Left of the centre at a steady rate, from slow to fast; right of
+  it on the beat, with 1, 2, 4 or 8 flashes per beat.
+- **Palette shift:** slides the colours along the palette, for effects that draw from it.
+
+The menus only offer what works on at least one light that is on; "(1 of 3)" means it works on one
+of three. If a choice doesn't work on the lights that are on now (say, Speed while only Energy
+runs), that axis does nothing, and your choice comes back once it works again.
+
+The centre leaves everything as saved. Close to the centre nothing changes, small moves change a
+little, and towards the edges a setting goes to its minimum or maximum. Lifting your finger
+returns to normal unless **Hold position** is on. Nothing is saved.
 
 ## 8. Audio
 

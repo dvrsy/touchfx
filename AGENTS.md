@@ -24,8 +24,11 @@ JDK 17–21 is required (Gradle 8.11 does not run on newer Java). Kotlin package
 - **New effect**: a class extending `Effect` (strip) or `Effect2D` (matrix), registered as an
   `EffectInfo` in `Effects.all`. When porting from LedFx, keep its setting keys, ranges and
   defaults so its presets apply. If the effect has a speed, size or intensity setting, add it to
-  `XyPad.MACROS`. The generic tests then render it at every size, apply all presets and check it
-  reacts to the palette (`ColoursTest`); `XyPadTest` checks every mapped setting exists.
+  `XyPad.MACROS`. If it doesn't follow the clock, mark it in `XyPad.TIMING`; if it ignores the
+  palette position, add it to `XyPad.NO_PALETTE_SHIFT`. Take random numbers from `FxRandom.source`.
+  The generic tests then render it at every size, apply all presets and check it reacts to the
+  palette (`ColoursTest`); `XyPadTest` checks every mapped setting exists, and `PadEffectsTest`
+  checks the pad marks against what the effect really does.
 - **Effects that run other effects** (`composite = true`, `EffectListParam`, `ChildEffects`) can't
   nest; their chosen effects use the light's own saved settings.
 - **Saved data** (SharedPreferences, schema 2) and **backups** (`engine/Backup.kt`, format 1) must

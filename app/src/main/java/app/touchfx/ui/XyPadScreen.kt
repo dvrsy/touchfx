@@ -33,9 +33,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,8 +53,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.touchfx.engine.LightEngine
 import app.touchfx.engine.PadState
 import app.touchfx.engine.PadTarget
+import app.touchfx.engine.Timing
 import app.touchfx.engine.XyPad
-import app.touchfx.effects.Effects
 
 /**
  * X/Y pad: drag to change the running effects live, e.g. speed left/right and hue up/down.
@@ -74,9 +76,17 @@ fun XyPadScreen(onDismiss: () -> Unit, lightId: String? = null) {
     // Opened from a light's screen: only that light; otherwise every light that is on.
     val single = lightId?.let { id -> lights.firstOrNull { it.id == id } }
     val running = if (single != null) listOf(single) else lights.filter { it.enabled }
+    val effects = running.map { it.settings.effectId }
+    // Only what works on at least one running light is offered. A chosen target that doesn't
+    // work right now counts as Nothing, but stays saved for when it works again.
+    val available = XyPad.available(effects)
+    val xUsed by rememberUpdatedState(XyPad.effective(xTarget, available))
+    val yUsed by rememberUpdatedState(XyPad.effective(yTarget, available))
 
-    fun push() = LightEngine.setPad(pos?.let { PadState(it.x, it.y, xTarget, yTarget, lightId) })
+    fun push() = LightEngine.setPad(pos?.let { PadState(it.x, it.y, xUsed, yUsed, lightId) })
     DisposableEffect(Unit) { onDispose { LightEngine.setPad(null) } }
+    // The running lights changed (e.g. a playlist moved on) while the pad is held.
+    LaunchedEffect(xUsed, yUsed) { push() }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
@@ -92,18 +102,23 @@ fun XyPadScreen(onDismiss: () -> Unit, lightId: String? = null) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AxisPicker("X ↔", xTarget, Modifier.weight(1f)) { xTarget = it; prefs.edit().putString("pad.x", it.name).apply(); push() }
-                    AxisPicker("Y ↕", yTarget, Modifier.weight(1f)) { yTarget = it; prefs.edit().putString("pad.y", it.name).apply(); push() }
+                    AxisPicker("X ↔", xUsed, available, running.size, Modifier.weight(1f)) { xTarget = it; prefs.edit().putString("pad.x", it.name).apply() }
+                    AxisPicker("Y ↕", yUsed, available, running.size, Modifier.weight(1f)) { yTarget = it; prefs.edit().putString("pad.y", it.name).apply() }
                 }
                 Text(
-                    listOf(xTarget, yTarget).filter { it != PadTarget.NONE }.distinct().joinToString(" · ") { t ->
-                        val n = running.count { XyPad.affects(t, it.settings.effectId) }
-                        "${t.label}: " + when {
-                            single != null -> if (n > 0) "works on this light" else "not used by ${Effects.info(single.settings.effectId).name}"
-                            t.isColor -> "all ${running.size} running lights"
-                            else -> "$n of ${running.size} running lights"
-                        }
-                    }.ifEmpty { "Choose what the axes change." },
+                    when {
+                        running.isEmpty() -> "No lights are on."
+                        else -> listOf(xUsed, yUsed).filter { it != PadTarget.NONE }.distinct().joinToString(" · ") { t ->
+                            val n = available[t] ?: 0
+                            val beat = t == PadTarget.TIME && effects.any { XyPad.timing(it) == Timing.BEAT }
+                            "${t.label}: " + when {
+                                single != null -> "works on this light"
+                                n == running.size -> "all ${running.size} running lights"
+                                else -> "$n of ${running.size} running lights"
+                            } + (if (beat) " (beat effects: ¼, ½, 2× or 4× time)" else "") +
+                                (if (t == PadTarget.STROBE) " (left: steady, right: on the beat)" else "")
+                        }.ifEmpty { "Choose what the axes change." }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -166,12 +181,16 @@ fun XyPadScreen(onDismiss: () -> Unit, lightId: String? = null) {
                     TextButton(onClick = { pos = null; push() }) { Text("Reset") }
                 }
                 Text(
-                    "The centre leaves everything as saved; towards the edges a setting goes to its minimum or " +
-                        "maximum. Speed, Size and Intensity move each effect's own setting (effects without one " +
-                        "ignore that axis). Colours steps through the palettes (also for effects with their own " +
-                        "colours); Overall speed runs time 0.25× to 4× for every effect (music-driven steps stay " +
-                        "on the beat); Hue, Palette shift and Brightness work on every light. Nothing is saved, " +
-                        "and lifting your finger returns to normal unless Hold position is on.",
+                    "The centre leaves everything as saved; small moves change a little, and towards the edges " +
+                        "a setting goes to its minimum or maximum. The menus only offer what the running lights " +
+                        "can use. Speed, Size and Intensity move each effect's own setting. Colours glides " +
+                        "through the palettes, sorted by colour. Overall speed runs effects 0.25× to 4×; effects " +
+                        "that follow the beat switch to quarter, half, double or quadruple time, and effects that " +
+                        "only follow the sound can't be sped up. Hue, Brightness and Saturation (grey to full " +
+                        "colour) work on every light, Palette shift on effects that use the palette. Strobe " +
+                        "flashes the lights: left of the centre at a steady rate (slow to fast), right of it on " +
+                        "the beat (1, 2, 4 or 8 flashes per beat). Nothing is saved, and lifting your finger " +
+                        "returns to normal unless Hold position is on.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -181,7 +200,10 @@ fun XyPadScreen(onDismiss: () -> Unit, lightId: String? = null) {
 }
 
 @Composable
-private fun AxisPicker(label: String, value: PadTarget, modifier: Modifier, onPick: (PadTarget) -> Unit) {
+private fun AxisPicker(
+    label: String, value: PadTarget, available: Map<PadTarget, Int>, total: Int, modifier: Modifier,
+    onPick: (PadTarget) -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
     Box(modifier) {
         OutlinedButton(shape = TouchShapes.control, onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
@@ -189,8 +211,10 @@ private fun AxisPicker(label: String, value: PadTarget, modifier: Modifier, onPi
             Icon(Icons.Rounded.ArrowDropDown, null)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            PadTarget.entries.forEach { t ->
-                DropdownMenuItem(text = { Text(t.label) }, onClick = { open = false; onPick(t) })
+            available.forEach { (t, n) ->
+                // Works on only some of the running lights: say on how many.
+                val part = if (t != PadTarget.NONE && n < total) "  ($n of $total)" else ""
+                DropdownMenuItem(text = { Text(t.label + part) }, onClick = { open = false; onPick(t) })
             }
         }
     }

@@ -4,9 +4,20 @@ import app.touchfx.effects.ChoiceParam
 import app.touchfx.effects.ColorParam
 import app.touchfx.effects.EffectInfo
 import app.touchfx.effects.FloatParam
+import app.touchfx.effects.Effects
 import app.touchfx.effects.IntParam
+import app.touchfx.effects.Palette
+import app.touchfx.effects.Palettes
 import app.touchfx.effects.Rgb
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.hypot
+import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sign
+import kotlin.math.sin
 
 /** What an axis of the X/Y pad changes. */
 enum class PadTarget(val label: String) {
@@ -18,10 +29,9 @@ enum class PadTarget(val label: String) {
     HUE("Hue"),
     PALETTE("Palette shift"),
     BRIGHTNESS("Brightness"),
-    TIME("Overall speed");
-
-    /** Targets that work on every effect (colours, the finished picture, time itself). */
-    val isColor get() = this == HUE || this == PALETTE || this == BRIGHTNESS || this == COLOURS || this == TIME
+    SATURATION("Saturation"),
+    STROBE("Strobe"),
+    TIME("Overall speed"),
 }
 
 /**
@@ -83,9 +93,61 @@ object XyPad {
         ),
     )
 
+    /** How each effect moves in time (see [Timing]); effects not listed follow the clock. */
+    val TIMING: Map<String, Timing> =
+        listOf("scroll", "water", "plasmawled").associateWith { Timing.STEPS } +
+            listOf("bar", "multiBar", "strobe", "segment_chase", "effect_chase").associateWith { Timing.BEAT } +
+            listOf(
+                "energy", "spectrum", "wavelength", "magnitude", "pitchSpectrum", "blade_power_plus", "power", "rain",
+                "sparkle", "hierarchy", "vumeter", "bands", "bands_matrix", "blocks", "equalizer", "equalizer2d", "matrix_test",
+            ).associateWith { Timing.NONE }
+
+    fun timing(effectId: String): Timing = TIMING[effectId] ?: Timing.CLOCK
+
+    /** Effects that ignore Palette shift: they don't draw from the palette by position. */
+    val NO_PALETTE_SHIFT = setOf(
+        "energy", "spectrum", "scroll", "scroll_plus", "rain", "hierarchy", "vumeter", "rainbow", "singleColor",
+        "random_flash", "wled_blobs", "matrix_test",
+    )
+
     /** True if [target] does something on effect [effectId]. */
-    fun affects(target: PadTarget, effectId: String) =
-        target.isColor || MACROS[target]?.containsKey(effectId) == true
+    fun affects(target: PadTarget, effectId: String): Boolean = when (target) {
+        PadTarget.NONE -> false
+        PadTarget.SPEED, PadTarget.SIZE, PadTarget.INTENSITY -> MACROS[target]?.containsKey(effectId) == true
+        PadTarget.HUE, PadTarget.BRIGHTNESS, PadTarget.SATURATION, PadTarget.STROBE -> true
+        PadTarget.PALETTE -> effectId !in NO_PALETTE_SHIFT
+        PadTarget.TIME -> timing(effectId) != Timing.NONE
+        PadTarget.COLOURS -> Effects.info(effectId).let { it.usesGradient || ownColourKeys(it).isNotEmpty() }
+    }
+
+    /**
+     * What the pad can offer for lights running [effectIds]: each target that works on at least
+     * one of them, with on how many it works. "Nothing" is always offered.
+     */
+    fun available(effectIds: List<String>): Map<PadTarget, Int> =
+        PadTarget.entries.associateWith { t -> if (t == PadTarget.NONE) effectIds.size else effectIds.count { affects(t, it) } }
+            .filter { (t, n) -> t == PadTarget.NONE || n > 0 }
+
+    /** The axis target in use: the chosen one if it works on the running lights, otherwise Nothing. */
+    fun effective(chosen: PadTarget, available: Map<PadTarget, Int>): PadTarget =
+        if (chosen in available) chosen else PadTarget.NONE
+
+    /** Around the centre the pad does nothing, so a touch near it leaves everything as saved. */
+    const val DEAD_ZONE = 0.04f
+
+    /** Higher = finer near the centre and coarser towards the edges. */
+    const val CURVE = 2f
+
+    /**
+     * The finger position (0..1) as the pad uses it: the centre zone counts as the centre, and
+     * small moves away from it change little, while the edges still reach 0 and 1.
+     */
+    fun shape(p: Float): Float {
+        val d = p.coerceIn(0f, 1f) - 0.5f
+        if (abs(d) <= DEAD_ZONE) return 0.5f
+        val t = (abs(d) - DEAD_ZONE) / (0.5f - DEAD_ZONE)
+        return 0.5f + sign(d) * t.pow(CURVE) * 0.5f
+    }
 
     /**
      * The effect's settings with the pad applied: for each axis with an effect target, the mapped
@@ -95,9 +157,10 @@ object XyPad {
         var out = config
         for ((target, pos) in listOf(pad.xTarget to pad.x, pad.yTarget to pad.y)) {
             val macros = MACROS[target]?.get(info.id) ?: continue
+            val shaped = shape(pos)
             for (mac in macros) {
                 val param = info.params.firstOrNull { it.key == mac.key } ?: continue
-                val p = if (mac.inverted) 1f - pos else pos
+                val p = if (mac.inverted) 1f - shaped else shaped
                 val v: Any = when (param) {
                     is FloatParam -> around(num(config[param.key], param.default), param.min, param.max, p)
                     is IntParam -> around(num(config[param.key], param.default.toFloat()), param.min.toFloat(), param.max.toFloat(), p).roundToInt()
@@ -122,20 +185,63 @@ object XyPad {
 
     private fun num(v: Any?, default: Float) = (v as? Number)?.toFloat() ?: default
 
-    /** Within this distance of the centre, Colours keeps each light's own colours. */
-    const val COLOUR_DEAD_ZONE = 0.04f
+    /**
+     * The palettes in the order Colours goes through them: sorted by their main colour, so a
+     * small move gives a similar palette. Palettes without one main colour (rainbows, greys) come last.
+     */
+    val PAD_PALETTES: List<Palette> by lazy { paletteOrder(Palettes.all) }
+
+    fun paletteOrder(palettes: List<Palette>): List<Palette> {
+        val keyed = palettes.map { p ->
+            // Average the colours' hues as arrows, weighted by how colourful each one is.
+            var x = 0.0; var y = 0.0
+            for (k in 0 until 32) {
+                val c = p.clamped(k / 31f)
+                val (h, sat) = hueAndSaturation(c)
+                x += cos(h * 2 * Math.PI) * sat; y += sin(h * 2 * Math.PI) * sat
+            }
+            val strength = hypot(x, y) / 32
+            val hue = ((atan2(y, x) / (2 * Math.PI)) + 1.0) % 1.0
+            Triple(p, strength >= 0.35, hue)
+        }
+        return keyed.filter { it.second }.sortedBy { it.third }.map { it.first } +
+            keyed.filterNot { it.second }.map { it.first }
+    }
+
+    private fun hueAndSaturation(c: Int): Pair<Double, Double> {
+        val r = Rgb.r(c) / 255.0; val g = Rgb.g(c) / 255.0; val b = Rgb.b(c) / 255.0
+        val max = maxOf(r, g, b); val d = max - minOf(r, g, b)
+        if (d == 0.0) return 0.0 to 0.0
+        val h = when (max) {
+            r -> ((g - b) / d).mod(6.0)
+            g -> (b - r) / d + 2
+            else -> (r - g) / d + 4
+        } / 6
+        return h to d // saturation × brightness: dark and pale colours count less
+    }
 
     /**
-     * Colours: the palette to use instead of the light's own, or null near the centre. Moving away
-     * from the centre steps through [palettes] from the light's own one ([baseIndex]) towards the
-     * first (left/down) or last (right/up).
+     * Colours: the palette to use instead of the light's own ([ownId]), or null in the centre.
+     * Moving away from the centre glides through [palettes] from the light's own towards the first
+     * (left/down) or last (right/up), blending each one smoothly into the next.
      */
-    fun <P> pickPalette(pad: PadState, palettes: List<P>, baseIndex: Int): P? {
-        val p = axes(pad, PadTarget.COLOURS).firstOrNull() ?: return null
-        if (kotlin.math.abs(p - 0.5f) < COLOUR_DEAD_ZONE || palettes.isEmpty()) return null
-        val base = baseIndex.coerceIn(0, palettes.size - 1).toFloat()
-        return palettes[around(base, 0f, (palettes.size - 1).toFloat(), p).roundToInt()]
+    fun pickPalette(pad: PadState, ownId: String, palettes: List<Palette> = PAD_PALETTES): Palette? {
+        val raw = axes(pad, PadTarget.COLOURS).firstOrNull() ?: return null
+        val p = shape(raw)
+        if (p == 0.5f || palettes.isEmpty()) return null
+        val own = palettes.indexOfFirst { it.id == ownId }
+        val base = (if (own >= 0) own else palettes.size / 2).toFloat()
+        val pos = around(base, 0f, (palettes.size - 1).toFloat(), p)
+        val i = floor(pos).toInt().coerceIn(0, palettes.size - 1)
+        val f = pos - i
+        if (f < 0.02f || i == palettes.size - 1) return palettes[i]
+        if (f > 0.98f) return palettes[i + 1]
+        return blend(palettes[i], palettes[i + 1], f)
     }
+
+    /** A palette part way ([f], 0..1) from [a] to [b]. */
+    fun blend(a: Palette, b: Palette, f: Float): Palette =
+        Palette("pad-blend", "Blend", List(16) { k -> Rgb.lerp(a.clamped(k / 15f), b.clamped(k / 15f), f) })
 
     /**
      * An effect's own colour settings (e.g. Single Color, Energy's lows/mids/highs, Texter's text)
@@ -143,11 +249,14 @@ object XyPad {
      * peak-marker colours stay as they are.
      */
     fun applyColours(info: EffectInfo, config: Map<String, Any>, color: (Float) -> Int): Map<String, Any> {
-        val keys = info.params.filterIsInstance<ColorParam>().map { it.key }
-            .filter { !it.contains("background") && !it.contains("peak") }
+        val keys = ownColourKeys(info)
         if (keys.isEmpty()) return config
         return config + keys.mapIndexed { i, k -> k to color(if (keys.size == 1) 0.5f else i.toFloat() / (keys.size - 1)) }
     }
+
+    /** The effect's own colour settings that Colours replaces (not background or peak markers). */
+    private fun ownColourKeys(info: EffectInfo) = info.params.filterIsInstance<ColorParam>().map { it.key }
+        .filter { !it.contains("background") && !it.contains("peak") }
 
     /** Overall speed: how fast time runs for the effects: 0.25x (low edge), 1x (centre), 4x (high edge). */
     fun timeScale(pad: PadState): Float = axes(pad, PadTarget.TIME).fold(1f) { f, p ->
@@ -163,13 +272,51 @@ object XyPad {
     /** Brightness factor: 0 at the low edge, 1 in the centre, 2 at the high edge. */
     fun brightness(pad: PadState): Float = axes(pad, PadTarget.BRIGHTNESS).fold(1f) { f, p -> f * 2f * p.coerceIn(0f, 1f) }
 
-    private fun axes(pad: PadState, t: PadTarget) = listOfNotNull(pad.x.takeIf { pad.xTarget == t }, pad.y.takeIf { pad.yTarget == t })
+    /** Saturation change, -1..1: below 0 towards grey (−1 = no colour), above 0 towards full colour. */
+    fun saturation(pad: PadState): Float =
+        axes(pad, PadTarget.SATURATION).sumOf { (it - 0.5) * 2.0 }.toFloat().coerceIn(-1f, 1f)
 
-    /** Rotates a colour's hue by [degrees] and scales it by [bright] (each channel clamped at full). */
-    fun recolor(c: Int, degrees: Float, bright: Float): Int {
+    /** Strobe left of the centre: flashes per second, from slow (near the centre) to fast. */
+    const val STROBE_MIN_HZ = 2f
+    const val STROBE_MAX_HZ = 20f
+
+    /** Strobe right of the centre: flashes per beat, in steps from the centre outwards. */
+    val STROBE_PER_BEAT = listOf(1, 2, 4, 8)
+
+    /** Part of each flash period the lights are on. */
+    const val STROBE_ON = 0.3f
+
+    /**
+     * Strobe: true while the lights are on. Left of the centre it flashes at a steady rate
+     * ([timeSec] is the engine's clock, so all lights flash together); right of it, on the beat
+     * ([beatPhase] 0..1 within the beat). In the centre the lights stay on.
+     */
+    fun strobeOpen(pad: PadState, timeSec: Double, beatPhase: Float): Boolean {
+        val p = axes(pad, PadTarget.STROBE).firstOrNull() ?: return true
+        if (p == 0.5f) return true
+        val t = (abs(p - 0.5f) * 2f).coerceIn(0f, 1f)
+        val phase = if (p < 0.5f) {
+            val hz = STROBE_MIN_HZ + (STROBE_MAX_HZ - STROBE_MIN_HZ) * t
+            (timeSec * hz).let { (it - floor(it)).toFloat() }
+        } else {
+            val per = STROBE_PER_BEAT[(t * STROBE_PER_BEAT.size).toInt().coerceAtMost(STROBE_PER_BEAT.size - 1)]
+            (beatPhase * per).let { it - floor(it) }
+        }
+        return phase < STROBE_ON
+    }
+
+    /** Positions of the axes set to [t], shaped (see [shape]). */
+    private fun axes(pad: PadState, t: PadTarget) =
+        listOfNotNull(pad.x.takeIf { pad.xTarget == t }, pad.y.takeIf { pad.yTarget == t }).map { shape(it) }
+
+    /**
+     * Rotates a colour's hue by [degrees], changes its saturation by [sat] (see [saturation]) and
+     * scales it by [bright] (each channel clamped at full).
+     */
+    fun recolor(c: Int, degrees: Float, bright: Float, sat: Float = 0f): Int {
         if (c == 0) return 0
         var out = c
-        if (degrees != 0f) {
+        if (degrees != 0f || sat != 0f) {
             val r = Rgb.r(c) / 255f; val g = Rgb.g(c) / 255f; val b = Rgb.b(c) / 255f
             val max = maxOf(r, g, b); val min = minOf(r, g, b); val d = max - min
             var h = when {
@@ -179,7 +326,10 @@ object XyPad {
                 else -> (r - g) / d + 4f
             } / 6f
             h = (h + degrees / 360f).mod(1f)
-            out = Rgb.hsv(h, if (max == 0f) 0f else d / max, max)
+            var s = if (max == 0f) 0f else d / max
+            // Grey has no colour to strengthen, so it stays grey.
+            if (sat < 0f) s *= 1f + sat else if (s > 0f) s += (1f - s) * sat
+            out = Rgb.hsv(h, s.coerceIn(0f, 1f), max)
         }
         if (bright != 1f) {
             out = Rgb.of((Rgb.r(out) * bright).roundToInt(), (Rgb.g(out) * bright).roundToInt(), (Rgb.b(out) * bright).roundToInt())

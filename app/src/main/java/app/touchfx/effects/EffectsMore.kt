@@ -6,7 +6,6 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
-import kotlin.random.Random
 
 // Ports of LedFx's "Simple", band, and non-reactive effects, plus two extras.
 
@@ -276,11 +275,11 @@ internal class RandomFlash : Effect() {
             } else false
         } else {
             nextFixed = Double.NaN
-            ctx.time - last >= duration && Random.nextFloat() < p.f("hit_probability_per_sec") * ctx.dt * 10f
+            ctx.time - last >= duration && FxRandom.source.nextFloat() < p.f("hit_probability_per_sec") * ctx.dt * 10f
         }
         if (start) {
             val size = max(1, n * p.i("hit_relative_size") / 100)
-            hitFrom = Random.nextInt(max(1, n - size + 1))
+            hitFrom = FxRandom.source.nextInt(max(1, n - size + 1))
             hitTo = min(n, hitFrom + size)
             last = ctx.time
         }
@@ -305,7 +304,7 @@ internal class Ripples : Effect() {
         val speed = ctx.p.f("speed")
         if (ctx.audio.beat && ripples.size < 16) {
             colorPos += 0.13f
-            ripples += Ripple(Random.nextFloat() * n, 0f, 1f, ctx.gradWrap(colorPos))
+            ripples += Ripple(FxRandom.source.nextFloat() * n, 0f, 1f, ctx.gradWrap(colorPos))
         }
         val grow = (10f + speed * 140f) * ctx.dt
         val width = max(2f, n / 25f)
@@ -337,11 +336,11 @@ internal class Sparkle : Effect() {
         val a = ctx.audio
         var spawn = a.highs * a.highs * n * 0.12f * (0.4f + ctx.p.f("density") * 1.2f)
         if (a.beat) spawn += n * 0.08f
-        var count = spawn.toInt() + if (Random.nextFloat() < spawn - spawn.toInt()) 1 else 0
+        var count = spawn.toInt() + if (FxRandom.source.nextFloat() < spawn - spawn.toInt()) 1 else 0
         while (count-- > 0) {
-            val i = Random.nextInt(n)
+            val i = FxRandom.source.nextInt(n)
             level[i] = 1f
-            color[i] = ctx.gradWrap(Random.nextFloat())
+            color[i] = ctx.gradWrap(FxRandom.source.nextFloat())
         }
         for (i in 0 until n) out[i] = Rgb.scale(color[i], level[i])
     }

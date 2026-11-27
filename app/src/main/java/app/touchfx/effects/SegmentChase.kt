@@ -2,7 +2,6 @@ package app.touchfx.effects
 
 import kotlin.math.exp
 import kotlin.math.floor
-import kotlin.random.Random
 
 /**
  * Segment Chase (not in LedFx): steps through a group's segments in time with the music —
@@ -184,8 +183,8 @@ class ChaseStepper {
                 if (k < parts) k else (period - k).toInt()
             }
             "Random" -> {
-                if (active < 0) return Random.nextInt(parts)
-                var r = Random.nextInt(parts - 1)
+                if (active < 0) return FxRandom.source.nextInt(parts)
+                var r = FxRandom.source.nextInt(parts - 1)
                 if (r >= active) r++ // never the same part twice in a row
                 r
             }
